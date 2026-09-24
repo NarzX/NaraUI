@@ -1,0 +1,23 @@
+/* Fixture dasar: state, persist, computed, For, If, Route, Image */
+App "Basic Fixture" {
+    @persist state: count = 0;
+    state: products = [];
+    computed: double = count * 2;
+
+    Container {
+        Row {
+            Text "NARA" { size: 20px; weight: bold; color: #0f172a | dark: white; }
+            Button "Beli ({count})" { background: #3b82f6; color: white; on-click: count += 1; }
+        }
+        If "count > 0" { Text "Ada isi" {} }
+        For "item in products" {
+            Text "{item.title}" {}
+        }
+        Image "logo.png" { width: 100px; }
+    }
+
+    Route "/cart" {
+        Text "Keranjang: {count} | double: {double}" {}
+        Button "Kembali" { on-click: window.location.hash = '#/'; }
+    }
+}
