@@ -1,0 +1,31 @@
+/* Fixture fitur v16: component+emit, resource, Else chain, form control, responsive pipe, transition */
+Component Dialog(title) {
+    Card { background: #1e293b;
+        Text "{title}" { color: white; weight: bold; }
+        Button "Ya" { on-click: emit("confirm"); }
+    }
+}
+
+App "Features Fixture" {
+    resource: users = fetch("https://example.com/users");
+    @persist state: mute = false;
+    state: kota = "Jakarta";
+    state: vol = 30;
+    state: memo = "";
+
+    Container {
+        Text "Responsif" { size: 14px | md: 20px | lg: 28px; }
+        Select "Kota" bind: kota { Option "Jakarta"; Option "Bandung"; }
+        Toggle "Bisukan" bind: mute;
+        Slider "Volume" bind: vol min: 0 max: 100;
+        TextArea "Memo" bind: memo;
+
+        If "users_loading" { Text "Loading" {} }
+        Else If "users_error" { Text "Err" {} }
+        Else { For "u in users" { Text "{u.name}" {} } }
+
+        Dialog("Hapus?") { on-confirm: toast("MARKER_PARENT_OK"); }
+
+        Route "/" transition: slide { Text "Home" {} }
+    }
+}
