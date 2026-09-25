@@ -197,9 +197,11 @@ function compile(){
   try{
     res = JSON.parse(py.runPython(
       'import json\n__src = ' + JSON.stringify(code) + '\n' +
+      '__out = ""\n' +
       'try:\n    __html, __parts = compile_source(__src, "playground.nui", False)\n' +
-      '    json.dumps({"ok": True, "html": __html, "lint": [[w[0], w[1]] for w in __parts.get("lint", [])]})\n' +
-      'except Exception as __e:\n    json.dumps({"ok": False, "error": str(__e)})\n'
+      '    __out = json.dumps({"ok": True, "html": __html, "lint": [[w[0], w[1]] for w in __parts.get("lint", [])]})\n' +
+      'except Exception as __e:\n    __out = json.dumps({"ok": False, "error": str(__e)})\n' +
+      '__out\n'
     ));
   }catch(e){ res = {ok:false, error:String(e)}; }
   const ms = (performance.now() - t0).toFixed(1);
