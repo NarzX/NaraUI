@@ -50,9 +50,10 @@ class Lexer:
 # 2. PARSER & AST
 # ==========================================
 class ASTNode:
-    def __init__(self, type, name="", param="", props=None, children=None):
+    def __init__(self, type, name="", param="", props=None, children=None, line=0):
         self.type = type; self.name = name; self.param = param
         self.props = props or {}; self.children = children or []
+        self.line = line; self.props_lines = {}
 
 class Parser:
     def __init__(self, tokens, raw_code, filename):
@@ -178,7 +179,7 @@ class Parser:
             if parsed_logic:
                 node.children.append(parsed_logic); continue
             if curr[0] in ('ID', 'KEYWORD') and self.pos+1 < len(self.tokens) and self.tokens[self.pos+1][0] == 'OTHER' and self.tokens[self.pos+1][1] == ':':
-                prop_key = self.consume(curr[0]); self.consume('OTHER')
+                prop_key = self.consume(curr[0]); prop_line = curr[2]; self.consume('OTHER')
                 start_idx = self.current()[4]; brace_lvl = 0; has_brace = False
                 while self.current()[0] != 'EOF':
                     curr_tok = self.current()[0]
@@ -195,7 +196,7 @@ class Parser:
                     self.pos += 1
                 raw_prop = self.raw_code[start_idx:end_idx].strip()
                 if raw_prop.endswith(';'): raw_prop = raw_prop[:-1].strip()
-                node.props[prop_key] = raw_prop
+                node.props[prop_key] = raw_prop; node.props_lines[prop_key] = prop_line
             elif curr[0] in ('ID', 'KEYWORD'):
                 child_tag = curr[1]; self.pos += 1
                 child_param = ""
@@ -210,10 +211,12 @@ class Parser:
                     self.consume('RPAREN')
                 if child_tag in self.components:
                     comp_node = self.parse_block(type='ComponentInstance', name=child_tag, param=child_param)
+                    comp_node.line = curr[2]
                     comp_node.props['_args'] = args
                     node.children.append(comp_node)
                 elif self.current()[0] == 'LBRACE':
                     child_node = self.parse_block(type='Element', name=child_tag, param=child_param)
+                    child_node.line = curr[2]
                     if child_tag == 'If':
                         branches = []
                         while self.current()[0] in ('ID', 'KEYWORD') and self.current()[1] == 'Else':
@@ -711,15 +714,113 @@ if (location.search.indexOf('nara-debug') !== -1) {{
 def compile_source(code, filename="app.nui", is_live=False):
     lexer = Lexer(code, filename)
     parser = Parser(lexer.tokenize(), code, filename)
-    html, parts = generate_code(parser.parse(), parser, is_live)
+    ast = parser.parse()
+    html, parts = generate_code(ast, parser, is_live)
+    parts['lint'] = lint_ast(ast, parser.components, filename)
     return html, parts
 
 def parse_and_compile(main_file, is_live=False):
     with open(main_file, 'r') as f: code = f.read()
     html, parts = compile_source(code, main_file, is_live)
+    print_lint(parts['lint'], main_file)
     out_file = main_file.replace('.nui', '.html')
     with open(out_file, 'w') as f: f.write(html)
     return out_file
+
+# ==========================================
+# 3.5 LINTER (warning compile-time)
+# ==========================================
+import difflib
+CSS_PROPS = {'color','background','background-color','background-image','width','height','min-width','min-height','max-width','max-height','margin','margin-top','margin-bottom','margin-left','margin-right','padding','padding-top','padding-bottom','padding-left','padding-right','font-size','font-weight','font-family','font-style','text-align','text-decoration','text-transform','line-height','letter-spacing','border','border-bottom','border-top','border-left','border-right','border-radius','box-shadow','opacity','display','flex','flex-direction','flex-wrap','justify-content','align-items','align-self','gap','position','top','left','right','bottom','z-index','overflow','overflow-x','overflow-y','cursor','transition','transform','animation','white-space','word-break','object-fit','grid-template-columns','accent-color','filter','backdrop-filter','user-select','pointer-events','resize','vertical-align','list-style','outline'}
+SPECIAL_PROPS = {'on-click','on-swipe-left','on-swipe-right','on-context-menu','bind','hover-scale','hover-shadow','hover-bg','sound','draggable','min','max','step','transition','value','size','weight','radius','animate','_args','_else'}
+KNOWN_TAGS = {'Container','Row','Column','Card','ScrollBox','Text','Image','Button','Input','TextArea','Select','Option','Toggle','Checkbox','Slider','Icon','For','If','Route','Slot'}
+ANIM_VALUES = {'fade-in','fade-in-up','pop-out'}
+TRANS_VALUES = {'slide','zoom','fade'}
+JS_KEYWORDS = {'let','const','var','function','return','if','else','for','while','do','break','continue','new','delete','typeof','instanceof','in','of','switch','case','default','try','catch','finally','throw','class','extends','super','this','import','export','from','as','async','await','yield','void'}
+JS_WHITE = {'Math','Date','JSON','window','document','localStorage','sessionStorage','NaraFS','toast','emit','routeParams','true','false','null','undefined','NaN','parseInt','parseFloat','String','Number','Boolean','Array','Object','fetch','setTimeout','setInterval','clearTimeout','clearInterval','location','history','navigator','event','eval','console','encodeURIComponent','decodeURIComponent','isNaN','Promise','alert','confirm','prompt','screen','Audio','Image','Error'}
+
+def lint_ast(root, components, filename='app.nui'):
+    warnings, declared, referenced = [], set(), set()
+    def collect_decl(node):
+        for c in node.children:
+            if c.type in ('State', 'PersistState'): declared.add(c.param.split(':')[0].strip())
+            elif c.type == 'Computed': declared.add(c.param.split('=')[0].strip())
+            elif c.type == 'Resource':
+                m = re.match(r'(\w+)\s*=', c.param)
+                if m: declared.update([m.group(1), m.group(1)+'_loading', m.group(1)+'_error'])
+            collect_decl(c)
+    collect_decl(root)
+    for comp in components.values(): collect_decl(comp)
+    def scan_expr(expr, scope, line):
+        for ident in re.findall(r'(?<![.\w])([A-Za-z_$][A-Za-z0-9_$]*)', expr):
+            referenced.add(ident)
+            if ident in scope or ident in declared or ident in JS_WHITE or ident in JS_KEYWORDS: continue
+            warnings.append((line, f"identifier '{ident}' dalam ekspresi tidak dikenal (bukan state/computed/resource/variabel loop)"))
+    def walk(node, scope):
+        if node.type == 'ComponentDef':
+            scope = scope | set(p.strip() for p in node.param.split(',') if p.strip())
+        if node.type == 'ComponentInstance':
+            for pk, pv in node.props.items():
+                if pk.startswith('on-'): scan_expr(pv, scope, node.line)
+                if pk == '_args':
+                    for a in (pv if isinstance(pv, list) else []): scan_expr(a, scope, node.line)
+            for c in node.children: walk(c, scope)
+            return
+        if node.type == 'Element':
+            tag = node.name
+            if tag not in KNOWN_TAGS and tag not in ('ElseIfBlock', 'ElseBlock'):
+                close = difflib.get_close_matches(tag, sorted(KNOWN_TAGS), n=1, cutoff=0.72)
+                if close: warnings.append((node.line, f"tag '{tag}' tidak dikenal (dianggap <div> biasa) — mungkin maksud '{close[0]}'?"))
+            for pk, pv in node.props.items():
+                pline = node.props_lines.get(pk, node.line)
+                if pk not in SPECIAL_PROPS and pk not in CSS_PROPS:
+                    close = difflib.get_close_matches(pk, sorted(CSS_PROPS | SPECIAL_PROPS), n=1, cutoff=0.72)
+                    warnings.append((pline, f"prop '{pk}' tidak dikenal" + (f" — mungkin maksud '{close[0]}'?" if close else "")))
+                if pk == 'animate' and pv.strip() not in ANIM_VALUES:
+                    warnings.append((pline, f"nilai animate '{pv.strip()}' tidak dikenal (pilihan: fade-in, fade-in-up, pop-out)"))
+                if pk == 'transition' and tag == 'Route' and pv.strip() not in TRANS_VALUES:
+                    warnings.append((pline, f"transition '{pv.strip()}' tidak dikenal (pilihan: slide, zoom, fade)"))
+                if pk == 'bind':
+                    referenced.add(pv.strip())
+                    if pv.strip() not in declared: warnings.append((pline, f"bind ke state '{pv.strip()}' yang tidak dideklarasikan"))
+                for part in pv.split('|')[1:]:
+                    mbp = re.match(r'^\s*(\w+):', part)
+                    if mbp and not part.strip().startswith('dark:') and mbp.group(1) not in BP:
+                        warnings.append((pline, f"breakpoint '{mbp.group(1)}' tidak dikenal (pilihan: sm, md, lg, xl)"))
+                if pk.startswith('on-'): scan_expr(pv, scope, pline)
+            if tag in ('Text', 'Button', 'Icon', 'Image'):
+                for e in re.findall(r'\{([^}]+)\}', node.param): scan_expr(e, scope, node.line)
+            if tag == 'If':
+                scan_expr(node.param, scope, node.line)
+                for cond, blk in node.props.get('_else', []):
+                    if cond: scan_expr(cond, scope, node.line)
+                    walk(blk, scope)
+            if tag == 'For' and ' in ' in node.param:
+                lv, right = node.param.split(' in ', 1)
+                scan_expr(right, scope, node.line)
+                scope = scope | {lv.strip()}
+            if tag in ('Input', 'TextArea', 'Select', 'Toggle', 'Checkbox', 'Slider') and 'bind' not in node.props:
+                warnings.append((node.line, f"{tag} tanpa prop bind (nilai tidak akan tersimpan)"))
+        for c in node.children:
+            if node.type == 'Element' and c.name == 'Option': continue
+            walk(c, scope)
+    walk(root, set())
+    for comp in components.values(): walk(comp, set())
+    for d in sorted(declared):
+        if d not in referenced and not d.endswith(('_loading', '_error')):
+            warnings.append((0, f"info: state '{d}' dideklarasikan tetapi tidak pernah dibaca"))
+    return warnings
+
+def lint_code(code, filename='test.nui'):
+    lexer = Lexer(code, filename)
+    parser = Parser(lexer.tokenize(), code, filename)
+    ast = parser.parse()
+    return lint_ast(ast, parser.components, filename)
+
+def print_lint(warnings, filename):
+    for line, msg in warnings:
+        loc = f"{filename}:{line}: " if line else ""
+        print(f"⚠️  [LINT] {loc}{msg}")
 
 # ==========================================
 # 4. BUILD / PWA / EMBED / MINIFY
@@ -736,9 +837,12 @@ def minify_html(html):
     html = re.sub(r'\n\s*\n', '\n', html)
     return html
 
-def do_build(main_file, pwa=False, embed=False):
+def do_build(main_file, pwa=False, embed=False, strict=False):
     with open(main_file) as f: code = f.read()
     html, parts = compile_source(code, main_file, False)
+    print_lint(parts['lint'], main_file)
+    if strict and parts['lint']:
+        print("❌ BUILD dibatalkan karena lint warnings (--strict)"); sys.exit(2)
     out = main_file.replace('.nui', '.html')
     if pwa:
         icon = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='96' fill='#0f172a'/><text x='256' y='340' font-size='280' text-anchor='middle' fill='#3b82f6' font-family='sans-serif' font-weight='bold'>N</text></svg>"
@@ -880,7 +984,10 @@ if __name__ == "__main__":
         main_file = args[0]
         try:
             if '--watch' in args: start_dev_server(main_file)
-            elif '--build' in args: do_build(main_file, '--pwa' in args, '--embed' in args)
-            else: out = parse_and_compile(main_file); print(f"✅ SUKSES: {out}")
+            elif '--build' in args: do_build(main_file, '--pwa' in args, '--embed' in args, '--strict' in args)
+            else:
+                out = parse_and_compile(main_file)
+                if '--strict' in args and lint_code(open(main_file, encoding='utf-8').read(), main_file): sys.exit(2)
+                print(f"✅ SUKSES: {out}")
         except NaraCompileError as e:
             print("❌", e); sys.exit(1)

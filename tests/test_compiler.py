@@ -159,3 +159,23 @@ if __name__ == '__main__':
         os.environ['NARA_UPDATE_GOLDEN'] = '1'
         sys.argv.remove('--update')
     unittest.main(verbosity=2)
+
+class TestLint(unittest.TestCase):
+    def msgs(self, code): return [m for _, m in nara.lint_code(code)]
+    def test_typo_prop(self):
+        self.assertTrue(any('colr' in m and 'color' in m for m in self.msgs('App "x" { Text "a" { colr: red; } }')))
+    def test_typo_tag(self):
+        self.assertTrue(any('Buton' in m and 'Button' in m for m in self.msgs('App "x" { Buton "a" {} }')))
+    def test_bad_animate(self):
+        self.assertTrue(any('animate' in m for m in self.msgs('App "x" { Text "a" { animate: fade-in-upp; } }')))
+    def test_bad_breakpoint(self):
+        self.assertTrue(any('breakpoint' in m for m in self.msgs('App "x" { Text "a" { size: 14px | xd: 20px; } }')))
+    def test_bind_unknown(self):
+        self.assertTrue(any('bind' in m for m in self.msgs('App "x" { Input "a" { bind: belum; } }')))
+    def test_unknown_ident(self):
+        self.assertTrue(any('totalx' in m for m in self.msgs('App "x" { Text "{totalx}" {} }')))
+    def test_fixtures_clean(self):
+        for fx in ['basic.nui', 'features.nui']:
+            with self.subTest(fixture=fx):
+                hard = [m for _, m in nara.lint_code(open(os.path.join(FIX, fx), encoding='utf-8').read(), fx) if not m.startswith('info:')]
+                self.assertEqual([], hard)
