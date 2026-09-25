@@ -752,6 +752,8 @@ def lint_ast(root, components, filename='app.nui'):
     collect_decl(root)
     for comp in components.values(): collect_decl(comp)
     def scan_expr(expr, scope, line):
+        expr = re.sub(r'"[^"]*"', '""', expr)
+        expr = re.sub(r"'[^']*'", "''", expr)
         for ident in re.findall(r'(?<![.\w])([A-Za-z_$][A-Za-z0-9_$]*)', expr):
             referenced.add(ident)
             if ident in scope or ident in declared or ident in JS_WHITE or ident in JS_KEYWORDS: continue
@@ -762,8 +764,6 @@ def lint_ast(root, components, filename='app.nui'):
         if node.type == 'ComponentInstance':
             for pk, pv in node.props.items():
                 if pk.startswith('on-'): scan_expr(pv, scope, node.line)
-                if pk == '_args':
-                    for a in (pv if isinstance(pv, list) else []): scan_expr(a, scope, node.line)
             for c in node.children: walk(c, scope)
             return
         if node.type == 'Element':
