@@ -98,7 +98,7 @@ class TestV16Features(unittest.TestCase):
     def setUpClass(cls): cls.html = compile_file('features.nui')
     def test_else_chain(self):
         self.assertIn('nara-ifchain', self.html)
-        self.assertEqual(self.html.count('nara-ifbranch'), 3)
+        self.assertEqual(self.html.count('class="nara-ifbranch"'), 3)
     def test_responsive_pipe(self): self.assertIn('@media (min-width: 768px)', self.html)
     def test_resource(self): self.assertIn('users_loading', self.html)
     def test_form_controls(self):
@@ -125,10 +125,10 @@ class TestBuild(unittest.TestCase):
                 nara.do_build('basic.nui', pwa=True, embed=True)
                 for fn in ['basic.html', 'manifest.webmanifest', 'sw.js', 'icon.svg', 'embed.js']:
                     self.assertTrue(os.path.exists(fn), fn + ' tidak dibuat')
-                html = open('basic.html').read()
+                with open('basic.html', encoding='utf-8') as f: html = f.read()
                 self.assertIn('manifest.webmanifest', html)
                 self.assertIn('serviceWorker', html)
-                self.assertIn('nara-app', open('embed.js').read())
+                with open('embed.js', encoding='utf-8') as f: self.assertIn('nara-app', f.read())
             finally:
                 os.chdir(cwd)
 
