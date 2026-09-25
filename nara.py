@@ -11,11 +11,16 @@ class NaraCompileError(Exception): pass
 
 def esc_attr(s): return s.replace('&', '&amp;').replace('"', '&quot;').replace('<', '&lt;').replace('>', '&gt;')
 
+def unquote(v):
+    v = v.strip()
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in ('"', "'"): v = v[1:-1]
+    return v
+
 def a11y_attrs(node):
     a = ''
-    if 'aria' in node.props: a += f' aria-label="{esc_attr(node.props["aria"])}"'
-    if 'role' in node.props: a += f' role="{esc_attr(node.props["role"])}"'
-    if 'tabindex' in node.props: a += f' tabindex="{esc_attr(node.props["tabindex"])}"'
+    if 'aria' in node.props: a += f' aria-label="{esc_attr(unquote(node.props["aria"]))}"'
+    if 'role' in node.props: a += f' role="{esc_attr(unquote(node.props["role"]))}"'
+    if 'tabindex' in node.props: a += f' tabindex="{esc_attr(unquote(node.props["tabindex"]))}"'
     return a
 
 # ==========================================
@@ -424,7 +429,7 @@ def generate_code(ast_root, parser, is_live=False):
             if '{' in param:
                 for mexpr in re.findall(r'\{([^}]+)\}', param): reg_expr(mexpr)
             alt_v = node.props.get('alt')
-            alt_attr = f' alt="{esc_attr(alt_v)}"' if alt_v is not None else ' alt=""'
+            alt_attr = f' alt="{esc_attr(unquote(alt_v))}"' if alt_v is not None else ' alt=""'
             return f'<img src="{param}" class="{base_class} {cname}"{alt_attr}{bind_src}{a11y_attrs(node)}{extra_attrs}>'
         if tag == "Button":
             key = process_action(node.props.get('on-click', ''))
