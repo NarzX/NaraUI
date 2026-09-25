@@ -14,7 +14,7 @@ App "Basic Fixture" {
         For "item in products" {
             Text "{item.title}" {}
         }
-        Image "{logo_url}" { width: 100px; }
+        Image "{logo_url}" { width: 100px; alt: "Logo aplikasi"; }
     }
 
     Route "/cart" {

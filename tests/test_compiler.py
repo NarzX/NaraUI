@@ -180,3 +180,40 @@ class TestLint(unittest.TestCase):
                 with open(os.path.join(FIX, fx), encoding='utf-8') as f: code = f.read()
                 hard = [m for _, m in nara.lint_code(code, fx) if not m.startswith('info:')]
                 self.assertEqual([], hard)
+
+class TestA11y(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls): cls.html = compile_file('basic.nui')
+    def test_icon_auto_hidden(self):
+        self.assertIn('aria-hidden="true"', compile_code('App "x" { Icon "fas fa-home" {} }'))
+    def test_icon_aria_override(self):
+        h = compile_code('App "x" { Icon "fas fa-home" { aria: "Beranda"; } }')
+        self.assertNotIn('aria-hidden', h)
+        self.assertIn('aria-label="Beranda"', h)
+    def test_image_alt_default(self):
+        self.assertIn('alt=""', compile_code('App "x" { Image "a.png" {} }'))
+    def test_image_alt_prop(self):
+        self.assertIn('alt="Logo"', compile_code('App "x" { Image "a.png" { alt: "Logo"; } }'))
+    def test_button_type(self):
+        self.assertIn('type="button"', compile_code('App "x" { Button "K" {} }'))
+    def test_toggle_switch_role(self):
+        self.assertIn('role="switch"', compile_file('features.nui'))
+    def test_input_auto_label(self):
+        self.assertIn('aria-label="Ketik nama"', compile_code('App "x" { state: n = ""; Input "Ketik nama" { bind: n; } }'))
+    def test_focus_ring_css(self): self.assertIn(':focus-visible', self.html)
+    def test_reduced_motion(self): self.assertIn('prefers-reduced-motion', self.html)
+    def test_toast_live_region(self): self.assertIn("setAttribute('role', 'status')", self.html)
+    def test_route_focus_mgmt(self): self.assertIn('.focus(', self.html)
+
+class TestKeyedFor(unittest.TestCase):
+    def test_key_attr_emitted(self):
+        h = compile_code('App "x" { state: l = []; For "item in l" { key: item.id; Text "{item.n}" {} } }')
+        self.assertIn('data-for-key="item.id"', h)
+    def test_engine_keyed_diff(self):
+        self.assertIn("getAttribute('data-key')", compile_file('basic.nui'))
+
+class TestLintA11y(unittest.TestCase):
+    def test_image_without_alt_warns(self):
+        self.assertTrue(any('alt' in m for _, m in nara.lint_code('App "x" { Image "a.png" {} }')))
+    def test_image_with_alt_clean(self):
+        self.assertFalse(any('alt' in m for _, m in nara.lint_code('App "x" { Image "a.png" { alt: "x"; } }')))

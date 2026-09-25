@@ -1,15 +1,22 @@
 import sys, os, re, time, threading, json, traceback
 from http.server import SimpleHTTPRequestHandler, HTTPServer, BaseHTTPRequestHandler
 
-NARA_VERSION = "NaraUI v1.0.0-pro"
+NARA_VERSION = "NaraUI V1.1.0-pro"
 BP = {'sm': 640, 'md': 768, 'lg': 1024, 'xl': 1280}
 SKIP_PROPS = ['on-click', 'bind', 'hover-scale', 'hover-shadow', 'hover-bg', '_args', 'on-swipe-left',
               'on-swipe-right', 'on-context-menu', 'sound', 'draggable', 'min', 'max', 'step',
-              'transition', 'value', '_else']
+              'transition', 'value', '_else', 'key', 'aria', 'alt', 'role', 'tabindex']
 
 class NaraCompileError(Exception): pass
 
 def esc_attr(s): return s.replace('&', '&amp;').replace('"', '&quot;').replace('<', '&lt;').replace('>', '&gt;')
+
+def a11y_attrs(node):
+    a = ''
+    if 'aria' in node.props: a += f' aria-label="{esc_attr(node.props["aria"])}"'
+    if 'role' in node.props: a += f' role="{esc_attr(node.props["role"])}"'
+    if 'tabindex' in node.props: a += f' tabindex="{esc_attr(node.props["tabindex"])}"'
+    return a
 
 # ==========================================
 # 1. LEXER
@@ -287,6 +294,8 @@ def generate_code(ast_root, parser, is_live=False):
     global_css += ".nara-slider { width: 100%; accent-color: #3b82f6; }\n"
     global_css += ".nara-select, .nara-textarea { background: #1e293b; color: white; border: 1px solid #334155; border-radius: 10px; padding: 12px; font-family: inherit; font-size: 14px; width: 100%; }\n"
     global_css += ".nara-textarea { min-height: 120px; resize: vertical; }\n"
+    global_css += "button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible { outline: 3px solid #3b82f6; outline-offset: 2px; }\n"
+    global_css += "@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; } }\n"
     global_css += "@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }\n"
     global_css += "@keyframes fadeInUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }\n"
     global_css += "@keyframes popOut { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }\n"
@@ -381,7 +390,11 @@ def generate_code(ast_root, parser, is_live=False):
         if tag == "For":
             right_raw = param.split(' in ', 1)[1] if ' in ' in param else ''
             reg_expr(right_raw)
-            return f'<div class="nara-for" data-for="{esc_attr(param)}" style="display:contents"><template>{inner_html}</template></div>'
+            key_attr = ''
+            if 'key' in node.props:
+                reg_expr(node.props['key'])
+                key_attr = f' data-for-key="{esc_attr(node.props["key"])}"'
+            return f'<div class="nara-for" data-for="{esc_attr(param)}"{key_attr} style="display:contents"><template>{inner_html}</template></div>'
         if tag == "If":
             branches_html = f'<div class="nara-ifbranch" data-if="{esc_attr(param)}" style="display:contents">{inner_html}</div>'
             reg_expr(param)
@@ -410,24 +423,34 @@ def generate_code(ast_root, parser, is_live=False):
             bind_src = f' data-bind-src="{esc_attr(param)}"' if '{' in param else ''
             if '{' in param:
                 for mexpr in re.findall(r'\{([^}]+)\}', param): reg_expr(mexpr)
-            return f'<img src="{param}" class="{base_class} {cname}"{bind_src}{extra_attrs}>'
+            alt_v = node.props.get('alt')
+            alt_attr = f' alt="{esc_attr(alt_v)}"' if alt_v is not None else ' alt=""'
+            return f'<img src="{param}" class="{base_class} {cname}"{alt_attr}{bind_src}{a11y_attrs(node)}{extra_attrs}>'
         if tag == "Button":
             key = process_action(node.props.get('on-click', ''))
-            return f'<button class="{base_class} {cname}" data-action="{key}" onclick="{onclick_snd} execAction({{target: this}}, this.getAttribute(\'data-action\'))"{bind_attrs}{extra_attrs}>{param}</button>'
-        if tag == "Input": return f'<input type="text" class="{base_class} nara-input {cname}" placeholder="{param}" data-model="{bind_key}" data-model-type="text"{extra_attrs}>'
-        if tag == "TextArea": return f'<textarea class="{base_class} nara-textarea {cname}" placeholder="{param}" data-model="{bind_key}" data-model-type="text"{extra_attrs}></textarea>'
+            return f'<button type="button" class="{base_class} {cname}" data-action="{key}" onclick="{onclick_snd} execAction({{target: this}}, this.getAttribute(\'data-action\'))"{bind_attrs}{extra_attrs}>{param}</button>'
+        if tag == "Input":
+            lab = '' if 'aria' in node.props else f' aria-label="{esc_attr(param)}"'
+            return f'<input type="text" class="{base_class} nara-input {cname}" placeholder="{param}" data-model="{bind_key}" data-model-type="text"{lab}{a11y_attrs(node)}{extra_attrs}>'
+        if tag == "TextArea":
+            lab = '' if 'aria' in node.props else f' aria-label="{esc_attr(param)}"'
+            return f'<textarea class="{base_class} nara-textarea {cname}" placeholder="{param}" data-model="{bind_key}" data-model-type="text"{lab}{a11y_attrs(node)}{extra_attrs}></textarea>'
         if tag == "Select":
             opts = "".join([f'<option value="{c.props.get("value", c.param)}">{c.param}</option>' for c in node.children if c.name == 'Option'])
-            return f'<select class="{base_class} nara-select {cname}" data-model="{bind_key}" data-model-type="text"{extra_attrs}>{opts}</select>'
+            lab = '' if 'aria' in node.props else f' aria-label="{esc_attr(param)}"'
+            return f'<select class="{base_class} nara-select {cname}" data-model="{bind_key}" data-model-type="text"{lab}{a11y_attrs(node)}{extra_attrs}>{opts}</select>'
         if tag == "Option": return ''
         if tag in ("Toggle", "Checkbox"):
             if tag == "Toggle":
-                return f'<label class="{base_class} nara-field {cname}"><input type="checkbox" class="nara-toggle-input" data-model="{bind_key}" data-model-type="bool"><span class="nara-toggle-ui"></span><span class="nara-field-label">{param}</span></label>'
+                return f'<label class="{base_class} nara-field {cname}"><input type="checkbox" role="switch" class="nara-toggle-input" data-model="{bind_key}" data-model-type="bool"><span class="nara-toggle-ui"></span><span class="nara-field-label">{param}</span></label>'
             return f'<label class="{base_class} nara-field {cname}"><input type="checkbox" class="nara-checkbox" data-model="{bind_key}" data-model-type="bool"><span class="nara-field-label">{param}</span></label>'
         if tag == "Slider":
             mn, mx, st = node.props.get('min', '0'), node.props.get('max', '100'), node.props.get('step', '1')
-            return f'<label class="{base_class} nara-field {cname}"><span class="nara-field-label">{param}</span><input type="range" class="nara-slider" min="{mn}" max="{mx}" step="{st}" data-model="{bind_key}" data-model-type="number"{extra_attrs}></label>'
-        if tag == "Icon": return f'<i class="{param} {base_class} {cname}"{bind_attrs}{extra_attrs}></i>'
+            lab = '' if 'aria' in node.props else f' aria-label="{esc_attr(param)}"'
+            return f'<label class="{base_class} nara-field {cname}"><span class="nara-field-label">{param}</span><input type="range" class="nara-slider" min="{mn}" max="{mx}" step="{st}" data-model="{bind_key}" data-model-type="number"{lab}{a11y_attrs(node)}{extra_attrs}></label>'
+        if tag == "Icon":
+            hid = '' if 'aria' in node.props else ' aria-hidden="true"'
+            return f'<i class="{param} {base_class} {cname}"{hid}{a11y_attrs(node)}{bind_attrs}{extra_attrs}></i>'
         action_attr = ""
         if 'on-click' in node.props:
             key = process_action(node.props['on-click'])
@@ -491,7 +514,7 @@ NaraFS.init();
 
 function toast(msg) {{
     let t = document.getElementById('nara-toast');
-    if(!t) {{ t = document.createElement('div'); t.id = 'nara-toast'; t.className = 'nara-toast-style'; document.body.appendChild(t); }}
+    if(!t) {{ t = document.createElement('div'); t.id = 'nara-toast'; t.className = 'nara-toast-style'; t.setAttribute('role', 'status'); t.setAttribute('aria-live', 'polite'); document.body.appendChild(t); }}
     t.innerText = msg; t.classList.add('show');
     setTimeout(() => t.classList.remove('show'), 3000);
 }}
@@ -584,6 +607,7 @@ window.addEventListener('hashchange', () => {{
             if (res) {{ match = true; state.routeParams = res.groups; }}
         }} else match = (hash === path);
         match ? el.classList.add('active') : el.classList.remove('active');
+        if (match) {{ el.setAttribute('tabindex', '-1'); el.focus({{ preventScroll: true }}); }}
     }});
 }});
 
@@ -629,16 +653,26 @@ function updateDOM() {{
         let sig = JSON.stringify(list);
         if (el.__naraSig === sig) return;
         el.__naraSig = sig;
-        let template = el.querySelector('template').innerHTML;
-        Array.from(el.children).forEach(c => {{ if(c.tagName !== 'TEMPLATE') c.remove(); }});
+        let keyExpr = el.getAttribute('data-for-key');
+        let template = el.querySelector('template');
+        let oldByKey = new Map();
+        Array.from(el.children).forEach(c => {{ if (c.tagName !== 'TEMPLATE') oldByKey.set(c.getAttribute('data-key'), c); }});
+        let used = new Set();
         list.forEach((item, index) => {{
-            let w = document.createElement('div');
-            w.className = 'nara-for-item'; w.style.display = 'contents';
             let sc = {{ [left.trim()]: item, 'index': index }};
-            w.setAttribute('data-scope', JSON.stringify(sc));
-            w.innerHTML = template;
+            let key = keyExpr ? String(evalInScope(keyExpr, sc)) : String(index);
+            let w = oldByKey.get(key);
+            if (w) {{ used.add(key); w.setAttribute('data-scope', JSON.stringify(sc)); }}
+            else {{
+                w = document.createElement('div');
+                w.className = 'nara-for-item'; w.style.display = 'contents';
+                w.innerHTML = template.innerHTML;
+                w.setAttribute('data-scope', JSON.stringify(sc));
+            }}
+            w.setAttribute('data-key', key);
             el.appendChild(w);
         }});
+        oldByKey.forEach((node, key) => {{ if (!used.has(key)) node.remove(); }});
     }});
 
     naraRoot.querySelectorAll('.nara-ifchain').forEach(chain => {{
@@ -732,7 +766,7 @@ def parse_and_compile(main_file, is_live=False):
 # ==========================================
 import difflib
 CSS_PROPS = {'color','background','background-color','background-image','width','height','min-width','min-height','max-width','max-height','margin','margin-top','margin-bottom','margin-left','margin-right','padding','padding-top','padding-bottom','padding-left','padding-right','font-size','font-weight','font-family','font-style','text-align','text-decoration','text-transform','line-height','letter-spacing','border','border-bottom','border-top','border-left','border-right','border-radius','box-shadow','opacity','display','flex','flex-direction','flex-wrap','justify-content','align-items','align-self','gap','position','top','left','right','bottom','z-index','overflow','overflow-x','overflow-y','cursor','transition','transform','animation','white-space','word-break','object-fit','grid-template-columns','accent-color','filter','backdrop-filter','user-select','pointer-events','resize','vertical-align','list-style','outline'}
-SPECIAL_PROPS = {'on-click','on-swipe-left','on-swipe-right','on-context-menu','bind','hover-scale','hover-shadow','hover-bg','sound','draggable','min','max','step','transition','value','size','weight','radius','animate','_args','_else'}
+SPECIAL_PROPS = {'on-click','on-swipe-left','on-swipe-right','on-context-menu','bind','hover-scale','hover-shadow','hover-bg','sound','draggable','min','max','step','transition','value','size','weight','radius','animate','_args','_else','key','aria','alt','role','tabindex'}
 KNOWN_TAGS = {'Container','Row','Column','Card','ScrollBox','Text','Image','Button','Input','TextArea','Select','Option','Toggle','Checkbox','Slider','Icon','For','If','Route','Slot'}
 ANIM_VALUES = {'fade-in','fade-in-up','pop-out'}
 TRANS_VALUES = {'slide','zoom','fade'}
@@ -789,6 +823,10 @@ def lint_ast(root, components, filename='app.nui'):
                     if mbp and not part.strip().startswith('dark:') and mbp.group(1) not in BP:
                         warnings.append((pline, f"breakpoint '{mbp.group(1)}' tidak dikenal (pilihan: sm, md, lg, xl)"))
                 if pk.startswith('on-'): scan_expr(pv, scope, pline)
+            if tag == 'Image' and 'alt' not in node.props:
+                warnings.append((node.line, 'a11y: Image tanpa prop alt — tambahkan alt: "deskripsi" (atau alt: "" jika dekoratif)'))
+            if tag in ('Input', 'TextArea', 'Select') and node.param.strip() == '' and 'aria' not in node.props:
+                warnings.append((node.line, f'a11y: {tag} tanpa label/placeholder — beri param teks atau prop aria'))
             if tag in ('Text', 'Button', 'Icon', 'Image'):
                 for e in re.findall(r'\{([^}]+)\}', node.param): scan_expr(e, scope, node.line)
             if tag == 'If':
