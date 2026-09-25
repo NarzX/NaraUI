@@ -177,5 +177,6 @@ class TestLint(unittest.TestCase):
     def test_fixtures_clean(self):
         for fx in ['basic.nui', 'features.nui']:
             with self.subTest(fixture=fx):
-                hard = [m for _, m in nara.lint_code(open(os.path.join(FIX, fx), encoding='utf-8').read(), fx) if not m.startswith('info:')]
+                with open(os.path.join(FIX, fx), encoding='utf-8') as f: code = f.read()
+                hard = [m for _, m in nara.lint_code(code, fx) if not m.startswith('info:')]
                 self.assertEqual([], hard)

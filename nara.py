@@ -773,6 +773,7 @@ def lint_ast(root, components, filename='app.nui'):
                 if close: warnings.append((node.line, f"tag '{tag}' tidak dikenal (dianggap <div> biasa) — mungkin maksud '{close[0]}'?"))
             for pk, pv in node.props.items():
                 pline = node.props_lines.get(pk, node.line)
+                if not isinstance(pv, str): continue
                 if pk not in SPECIAL_PROPS and pk not in CSS_PROPS:
                     close = difflib.get_close_matches(pk, sorted(CSS_PROPS | SPECIAL_PROPS), n=1, cutoff=0.72)
                     warnings.append((pline, f"prop '{pk}' tidak dikenal" + (f" — mungkin maksud '{close[0]}'?" if close else "")))
