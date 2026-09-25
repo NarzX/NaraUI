@@ -219,7 +219,7 @@ class Parser:
                     start_idx = self.current()[4]
                     while self.current()[0] != 'RPAREN': self.pos += 1
                     args_raw = self.raw_code[start_idx:self.current()[4]]
-                    args = [a.strip().strip('"') for a in args_raw.split(',')] if args_raw else []
+                    args = [a.strip() for a in args_raw.split(',')] if args_raw else []
                     self.consume('RPAREN')
                 if child_tag in self.components:
                     comp_node = self.parse_block(type='ComponentInstance', name=child_tag, param=child_param)
@@ -332,7 +332,11 @@ def generate_code(ast_root, parser, is_live=False):
             if not comp_def: return ""
             def_params = [p.strip() for p in comp_def.param.split(',')] if comp_def.param else []
             passed_args = node.props.get('_args', [])
-            scope_map = {def_params[i]: passed_args[i] for i in range(min(len(def_params), len(passed_args)))}
+            scope_map = {}
+            for i in range(min(len(def_params), len(passed_args))):
+                a = passed_args[i]
+                if len(a) >= 2 and a[0] == '"' and a[-1] == '"': scope_map[def_params[i]] = '\x00LIT:' + a[1:-1]
+                else: scope_map[def_params[i]] = a
             events = {pk[3:]: pv for pk, pv in node.props.items() if pk.startswith('on-')}
             return "".join(process_node(c, component_args=scope_map, slot_html="".join(process_node(ch) for ch in node.children), component_events=events) for c in comp_def.children)
         if node.type == 'Element' and node.name == 'Slot': return slot_html
@@ -366,12 +370,19 @@ def generate_code(ast_root, parser, is_live=False):
 
         tag = node.name; param = node.param
         if component_args and '{' in param:
-            for k, v in component_args.items(): param = param.replace(f"{{{k}}}", f"{{{v}}}")
+            for k, v in component_args.items():
+                if isinstance(v, str) and v.startswith('\x00LIT:'): param = param.replace(f"{{{k}}}", v[5:])
+                else: param = param.replace(f"{{{k}}}", f"{{{v}}}")
 
         def process_action(action):
             if action.startswith('{') and action.endswith('}'): action = action[1:-1].strip()
             if component_args:
-                for k, v in component_args.items(): action = re.sub(rf'\b{k}\b', v, action)
+                for k, v in component_args.items():
+                    if isinstance(v, str) and v.startswith('\x00LIT:'):
+                        repl = json.dumps(v[5:])
+                        action = re.sub(rf'\b{k}\b', lambda m: repl, action)
+                    else:
+                        action = re.sub(rf'\b{k}\b', lambda m: v, action)
             if component_events:
                 action = re.sub(r'emit\(\s*["\']([^"\']+)["\']\s*\)', lambda mm: '(' + component_events.get(mm.group(1), '') + ')', action)
             else:
@@ -473,8 +484,8 @@ def generate_code(ast_root, parser, is_live=False):
         computed_lines += f"try {{ state.{lhs} = evalInScope({json.dumps(rhs)}); }} catch(e){{}}\n"
     on_mount_lines = "".join([f"try {{ with(state) {{ {m} }} }} catch(e){{}}\n" for m in on_mounts])
 
-    expr_fns_js = "\n".join(['NARA_EXPRS[' + json.dumps(k) + '] = (state, S) => { with(state) { with(S || {}) { return (' + src + '); } } };' for src, k in expr_keys.items()])
-    action_fns_js = "\n".join(['NARA_ACTIONS[' + json.dumps(k) + '] = (state, S) => { with(state) { with(S || {}) { ' + src + ' } } };' for k, src in actions.items()])
+    expr_fns_js = "\n".join(['try { NARA_EXPRS[' + json.dumps(k) + '] = new Function(\'state\', \'S\', ' + json.dumps('with(state) { with(S || {}) { return (' + src + '); } }') + '); } catch(e) { NARA_EXPRS[' + json.dumps(k) + '] = function() { return ""; }; }' for src, k in expr_keys.items()])
+    action_fns_js = "\n".join(['try { NARA_ACTIONS[' + json.dumps(k) + '] = new Function(\'state\', \'S\', ' + json.dumps('with(state) { with(S || {}) { ' + src + ' } }') + '); } catch(e) { NARA_ACTIONS[' + json.dumps(k) + '] = function() { toast("Aksi invalid: syntax error"); }; }' for k, src in actions.items()])
     expr_keys_json = json.dumps(expr_keys)
 
     engine_core = f"""

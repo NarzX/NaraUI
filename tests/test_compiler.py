@@ -109,8 +109,9 @@ class TestV16Features(unittest.TestCase):
         self.assertNotIn('emit(', self.html, 'emit() tidak tersubstitusi!')
     def test_precompiled_no_eval_spam(self):
         self.assertIn('NARA_EXPR_KEYS', self.html)
-        self.assertEqual(self.html.count('new Function'), 1,
-                         'new Function harus tinggal 1x (fallback saja) - CSP regression!')
+        self.assertNotIn('] = (state, S) =>', self.html,
+                         'Registrasi ekspresi harus via new Function ter-guard (parse-safe)!')
+        self.assertIn('try { NARA_EXPRS[', self.html)
     def test_route_transition(self): self.assertIn('t-slide', self.html)
     def test_devtools(self): self.assertIn('nara-debug', self.html)
 
@@ -217,3 +218,16 @@ class TestLintA11y(unittest.TestCase):
         self.assertTrue(any('alt' in m for _, m in nara.lint_code('App "x" { Image "a.png" {} }')))
     def test_image_with_alt_clean(self):
         self.assertFalse(any('alt' in m for _, m in nara.lint_code('App "x" { Image "a.png" { alt: "x"; } }')))
+
+class TestComponentArgs(unittest.TestCase):
+    def test_literal_arg(self):
+        h = compile_code('Component D(t) { Text "{t}" {} }\nApp "x" { D("Halo dunia?") {} }')
+        self.assertIn('>Halo dunia?<', h)
+        self.assertNotIn('{Halo dunia?}', h)
+    def test_expr_arg(self):
+        h = compile_code('Component D(t) { Text "{t}" {} }\nApp "x" { state: n = 7; D(n) {} }')
+        self.assertIn('data-bind-text="{n}"', h)
+    def test_invalid_expr_cannot_kill_engine(self):
+        h = compile_code('App "x" { Text "{ini bukan js!!}" {} }')
+        self.assertIn('try { NARA_EXPRS[', h)
+        self.assertNotIn('] = (state, S) =>', h)

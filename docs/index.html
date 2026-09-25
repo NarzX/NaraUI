@@ -142,8 +142,8 @@ const EXAMPLES = {
     state: kota = "Jakarta";
     Container {
         Text "PENGATURAN" { size: 22px; weight: bold; }
-        Slider "Volume" bind: vol min: 0 max: 100;
-        Toggle "Bisukan" bind: mute;
+        Slider "Volume" { bind: vol; min: 0; max: 100; }
+        Toggle "Bisukan" { bind: mute; }
         Select "Kota" { bind: kota; Option "Jakarta" {} Option "Bandung" {} }
         Text "Vol: {vol} | Mute: {mute} | Kota: {kota}" { color: #94a3b8; }
     }
@@ -215,13 +215,14 @@ function compile(){
     $('err').style.display = 'block';
     $('err').textContent = res.error;
     $('stat').textContent = '❌ compile gagal (' + ms + ' ms)';
-    renderLint([]);
+    renderLint(null);
   }
 }
 
 function renderLint(lint){
   const bar = $('lintbar');
   bar.innerHTML = '';
+  if (lint === null){ bar.innerHTML = '<span class="chip warn">✗ compile gagal — perbaiki kode (lihat panel merah)</span>'; return; }
   if (!lint.length){ bar.innerHTML = '<span class="chip ok">✓ lint bersih</span>'; return; }
   lint.forEach(w => {
     const c = document.createElement('span');
