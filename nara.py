@@ -1,7 +1,7 @@
 import sys, os, re, time, threading, json, traceback
 from http.server import SimpleHTTPRequestHandler, HTTPServer, BaseHTTPRequestHandler
 
-NARA_VERSION = "NaraUI v16.0.0-pro"
+NARA_VERSION = "NaraUI v1.0.0-pro"
 BP = {'sm': 640, 'md': 768, 'lg': 1024, 'xl': 1280}
 SKIP_PROPS = ['on-click', 'bind', 'hover-scale', 'hover-shadow', 'hover-bg', '_args', 'on-swipe-left',
               'on-swipe-right', 'on-context-menu', 'sound', 'draggable', 'min', 'max', 'step',
@@ -548,7 +548,7 @@ const state = deepProxy(rawState, () => {{
 }});
 window.state = state;
 
-// [V16] Precompiled expressions: NO runtime eval untuk ekspresi yang dikenal (CSP-friendly)
+// [V1] Precompiled expressions: NO runtime eval untuk ekspresi yang dikenal (CSP-friendly)
 const NARA_EXPRS = {{}};
 {expr_fns_js}
 const NARA_EXPR_KEYS = {expr_keys_json};
@@ -880,7 +880,7 @@ header{padding:10px 16px;background:#1e293b;font-weight:bold}#wrap{display:flex;
 textarea{flex:1;background:#0b1120;color:#7dd3fc;border:none;padding:14px;font:13px monospace;resize:none;outline:none}
 #right{flex:1;display:flex;flex-direction:column;border-left:2px solid #1e293b}#err{background:#7f1d1d;color:#fecaca;padding:8px 12px;font:12px monospace;white-space:pre-wrap;display:none}
 iframe{flex:1;border:none;background:white}</style></head><body>
-<header>NaraUI Playground (v16) - edit kiri, preview kanan</header>
+<header>NaraUI Playground (v1) - edit kiri, preview kanan</header>
 <div id='wrap'><textarea id='src' spellcheck='false'></textarea><div id='right'><div id='err'></div><iframe id='prev'></iframe></div></div>
 <script>
 var ta=document.getElementById('src'),fr=document.getElementById('prev'),er=document.getElementById('err'),tm=null;
@@ -934,7 +934,7 @@ def gen_vscode():
     print("✅ Ekstensi VS Code dibuat di folder naraui-vscode/")
 
 TEMPLATES = {
-'blank': 'App "Blank App" {\n    Container {\n        Text "Halo NaraUI v16!" { size: 28px; weight: bold; }\n    }\n}\n',
+'blank': 'App "Blank App" {\n    Container {\n        Text "Halo NaraUI v1!" { size: 28px; weight: bold; }\n    }\n}\n',
 'pos': 'App "Kasir POS" {\n    state: cart = [];\n    state: menu = ["Kopi 15k", "Teh 10k", "Roti 12k"];\n    computed: total = cart.length;\n    Container {\n        Text "KASIR" { size: 28px; weight: bold; }\n        For "m in menu" {\n            Button "{m}" { background: #10b981; color: white; on-click: cart.push(m); }\n        }\n        Text "Total item: {total}" { size: 20px; margin-top: 20px; }\n        If "total > 0" { Text "Siap bayar!" { color: #10b981; } } Else { Text "Keranjang kosong" { color: #94a3b8; } }\n        Button "Reset" { background: #ef4444; color: white; on-click: cart = []; }\n    }\n}\n',
 'kiosk': 'App "Kiosk Info" {\n    @persist state: volume = 50;\n    @persist state: mute = false;\n    @persist state: msg = "";\n    Container {\n        Text "PENGATURAN KIOSK" { size: 24px; weight: bold; }\n        Slider "Volume" bind: volume min: 0 max: 100;\n        Toggle "Bisukan" bind: mute;\n        TextArea "Tulis pengumuman..." bind: msg;\n        Text "Volume: {volume} | Mute: {mute}" { color: #94a3b8; }\n    }\n}\n',
 'admin': 'App "Admin Dashboard" {\n    resource: users = fetch("https://jsonplaceholder.typicode.com/users?_limit=5");\n    Container {\n        Text "USER LIST" { size: 24px; weight: bold; }\n        If "users_loading" { Text "Memuat user..." { color: #94a3b8; } } Else {\n            For "u in users" {\n                Card { width: 100%; background: #1e293b; margin-bottom: 10px;\n                    Text "{u.name}" { weight: bold; color: white; }\n                    Text "{u.email}" { color: #94a3b8; }\n                }\n            }\n        }\n    }\n}\n',
@@ -945,6 +945,97 @@ def create_template(name):
     fn = f"{name}.nui"
     with open(fn, 'w') as f: f.write(src)
     print(f"✅ Template '{fn}' dibuat. Jalankan: python nara.py {fn} --watch")
+
+
+# ==========================================
+# 7. AUTO-GENERATE DOCUMENTATION
+# ==========================================
+def generate_docs():
+    docs = []
+    docs.append("# 📖 Dokumentasi Resmi NaraUI")
+    docs.append(f"*Versi: {NARA_VERSION} | Auto-generated dari compiler.*\n")
+    
+    docs.append("## 🚀 Cara Pakai (CLI)")
+    docs.append("```bash")
+    docs.append("python nara.py app.nui             # Compile sekali jadi app.html")
+    docs.append("python nara.py app.nui --watch     # Dev server + hot reload (localhost:8080)")
+    docs.append("python nara.py app.nui --build     # Minify HTML untuk produksi")
+    docs.append("python nara.py app.nui --build --pwa --embed  # PWA (offline) + Web Component")
+    docs.append("python nara.py app.nui --strict    # Compile + Linter strict (gagal jika ada warning)")
+    docs.append("python nara.py --docs              # Generate file DOCS.md ini")
+    docs.append("python nara.py --playground        # Buka editor web interaktif")
+    docs.append("```\n")
+    
+    docs.append("## 🧠 Core Concepts")
+    docs.append("### 1. State & Reaktivitas")
+    docs.append("- `state: nama = nilai;` -> Variabel reaktif (auto update UI).")
+    docs.append("- `@persist state: nama = nilai;` -> Disimpan otomatis di LocalStorage (anti hilang saat refresh).")
+    docs.append("- `computed: total = harga * qty;` -> Dihitung otomatis saat dependensinya berubah.")
+    docs.append("- `resource: users = fetch('url');` -> Otomatis bikin `users`, `users_loading`, `users_error`.\n")
+    
+    docs.append("### 2. Binding & Event")
+    docs.append("- `bind: nama_state` -> Two-way binding untuk Input, Select, Toggle, Checkbox, Slider.")
+    docs.append("- `on-click: { state += 1 }` -> Eksekusi kode saat diklik.")
+    docs.append("- `on-swipe-left/right: ...` -> Gesture swipe untuk layar sentuh.")
+    docs.append("- `emit('nama_event')` -> Kirim event dari Component child ke parent.")
+    docs.append("- `on-nama_event: ...` -> Tangkap event dari child component.\n")
+    
+    docs.append("### 3. Styling & Tema (Tanpa CSS External)")
+    docs.append("- **CSS langsung:** `size: 16px; color: #fff; weight: bold;`")
+    docs.append("- **Dark Mode Pipe:** `color: black | dark: white;`")
+    docs.append("- **Responsive Pipe:** `size: 14px | md: 18px | lg: 24px;` (sm:640, md:768, lg:1024, xl:1280)")
+    docs.append("- **Hover Effect:** `hover-scale: 1.05; hover-shadow: ...; hover-bg: ...;`")
+    docs.append("- **Animasi:** `animate: fade-in | fade-in-up | pop-out;`\n")
+    
+    docs.append("## 🧱 Tag Bawaan (Built-in)")
+    
+    tags = {
+        "Layout": [
+            ("App", "Root aplikasi. `App \"Judul\" { ... }`"),
+            ("Container", "Wrapper konten utama (max-width 1200px, padding)."),
+            ("Row", "Flexbox horizontal (`gap`, `justify-content`, `align-items`)."),
+            ("Column", "Flexbox vertikal."),
+            ("Card", "Kotak dengan border, shadow, dan padding.")
+        ],
+        "Teks & Media": [
+            ("Text", "Teks. Dukungan binding: `Text \"Halo {nama}\" {}`"),
+            ("Image", "Gambar. `Image \"url.png\" { width: 100px; }`"),
+            ("Icon", "Font Awesome icon. `Icon \"fas fa-home\" { color: red; }`")
+        ],
+        "Form": [
+            ("Input", "Input teks. `Input \"Placeholder\" { bind: state; }`"),
+            ("TextArea", "Input teks multiline."),
+            ("Select", "Dropdown. Berisi `Option \"Label\" {}`"),
+            ("Toggle", "Switch on/off. `Toggle \"Mode Gelap\" { bind: dark_mode; }`"),
+            ("Checkbox", "Kotak centang."),
+            ("Slider", "Range slider. `Slider \"Volume\" { bind: vol; min: 0; max: 100; }`")
+        ],
+        "Interaksi & Logika": [
+            ("Button", "Tombol. `Button \"Klik\" { on-click: n += 1; }`"),
+            ("If / Else", "Kondisi. `If \"n > 0\" { ... } Else { ... }`"),
+            ("For", "Looping. `For \"item in list\" { ... }`"),
+            ("Route", "Halaman SPA. `Route \"/about\" { transition: slide; ... }`"),
+            ("Component", "Deklarasi komponen: `Component Nama(arg1) { ... }`"),
+            ("Slot", "Tempat menaruh child di dalam Component.")
+        ]
+    }
+    
+    for cat, items in tags.items():
+        docs.append(f"### {cat}")
+        for tag, desc in items:
+            docs.append(f"- **`{tag}`**: {desc}")
+        docs.append("")
+        
+    docs.append("## 🛠️ Ekosistem Bawaan")
+    docs.append("- **NaraFS**: IndexedDB wrapper. `await NaraFS.write('file.txt', 'halo')` dan `await NaraFS.read('file.txt')`.")
+    docs.append("- **toast(\"pesan\")**: Munculkan notifikasi pop-up dari bawah.")
+    docs.append("- **DevTools**: Tambahkan `?nara-debug` di URL browser untuk melihat panel state & render time secara live.\n")
+    
+    docs.append("---\n*Made with 🥰 by NarzX (github.com/nezXproject)*")
+    
+    with open("DOCS.md", "w", encoding="utf-8") as f:
+        f.write("\n".join(docs))
+    print("✅ Dokumentasi berhasil di-generate ke DOCS.md")
 
 # ==========================================
 # 6. DEV SERVER & CLI
@@ -977,10 +1068,11 @@ def start_dev_server(nui_file):
 if __name__ == "__main__":
     args = sys.argv[1:]
     if not args:
-        print("NaraUI v16 - penggunaan:\n  python nara.py app.nui [--watch]\n  python nara.py app.nui --build [--pwa] [--embed]\n  python nara.py --playground | --vscode | --create pos|kiosk|admin|profil|blank")
+        print("NaraUI v1 - penggunaan:\n  python nara.py app.nui [--watch]\n  python nara.py app.nui --build [--pwa] [--embed]\n  python nara.py --playground | --vscode | --create pos|kiosk|admin|profil|blank")
     elif args[0] == '--playground': start_playground()
     elif args[0] == '--vscode': gen_vscode()
     elif args[0] == '--create': create_template(args[1] if len(args) > 1 else 'blank')
+    elif args[0] == '--docs': generate_docs()
     else:
         main_file = args[0]
         try:
