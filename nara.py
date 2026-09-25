@@ -245,7 +245,7 @@ class Parser:
                                 self.error("Expected block atau If setelah Else", self.current()[2], self.current()[3])
                         child_node.props['_else'] = branches
                     node.children.append(child_node)
-                else: self.error(f"Sintaks tidak valid: {child_tag}", curr[2], curr[3])
+                else: self.error(f"Sintaks tidak valid: {child_tag}" + (" — props harus di dalam kurung kurawal, contoh: {child_tag} \"...\" {{ bind: x; }}" if self.current()[0]=='ID' and self.pos+1<len(self.tokens) and self.tokens[self.pos+1][0]=='OTHER' and self.tokens[self.pos+1][1]==':' else ""), curr[2], curr[3])
             else: self.pos += 1
         self.consume('RBRACE')
         return node
