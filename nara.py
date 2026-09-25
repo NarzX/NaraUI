@@ -1,7 +1,7 @@
 import sys, os, re, time, threading, json, traceback
 from http.server import SimpleHTTPRequestHandler, HTTPServer, BaseHTTPRequestHandler
 
-NARA_VERSION = "NaraUI V1.1.0-pro"
+NARA_VERSION = "NaraUI V1.0.0"
 BP = {'sm': 640, 'md': 768, 'lg': 1024, 'xl': 1280}
 SKIP_PROPS = ['on-click', 'bind', 'hover-scale', 'hover-shadow', 'hover-bg', '_args', 'on-swipe-left',
               'on-swipe-right', 'on-context-menu', 'sound', 'draggable', 'min', 'max', 'step',
